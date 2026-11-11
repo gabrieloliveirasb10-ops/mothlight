@@ -1,0 +1,645 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Mothlight</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@500;700&family=Unbounded:wght@600;800&display=swap" rel="stylesheet">
+<style>
+/* Layout: slim header (name, best score, sound) above a one-screen 9:16 canvas fitted to the remaining height.
+   Single dark cave look by choice: deep indigo rock, one warm amber glow for the moth. */
+:root {
+  --bg: #0a0d1f;
+  --bg-2: #141737;
+  --rock: #2c3163;
+  --glow: #ffc857;
+  --fg: #eef0ff;
+  --fg-dim: #9aa2d6;
+  --line: rgba(127, 138, 214, 0.3);
+  --font-display: "Unbounded", "Arial Black", system-ui, sans-serif;
+  --font-body: "DM Sans", system-ui, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-block: 12px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 34px;
+}
+h1 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font: 600 15px/1 var(--font-display);
+  letter-spacing: 0.02em;
+}
+h1::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--glow) 30%, rgba(255, 200, 87, 0) 72%);
+  box-shadow: 0 0 12px rgba(255, 200, 87, 0.7);
+}
+.meta { display: flex; align-items: center; gap: 12px; }
+#best {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--fg-dim);
+  font-variant-numeric: tabular-nums;
+}
+#snd {
+  font: 500 13px var(--font-body);
+  color: var(--fg-dim);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+#snd:hover { color: var(--fg); border-color: var(--fg-dim); }
+#snd:focus-visible { outline: 2px solid var(--glow); outline-offset: 2px; }
+.stage {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  touch-action: none;
+  cursor: pointer;
+}
+canvas {
+  display: block;
+  background: var(--bg-2);
+  border-radius: 14px;
+  box-shadow: 0 0 0 1px var(--line);
+  touch-action: none;
+}
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+</style>
+
+<header class="bar">
+  <h1>Mothlight</h1>
+  <div class="meta">
+    <span id="best">Best 0</span>
+    <button id="snd" type="button" aria-pressed="true">Sound on</button>
+  </div>
+</header>
+<main class="stage" id="stage">
+  <canvas id="c" role="img" aria-label="Mothlight game. Tap, click or press Space to flutter upward and fly the glowing moth through the gaps between the rocks."></canvas>
+</main>
+<div id="status" class="sr" aria-live="polite"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var W = 360, H = 640, FLOOR = 572, BR = 10, BX = 100;
+  var GRAV = 1500, FLAP = -430, MAXFALL = 780, SPEED = 125;
+  var GAP = 170, SPACING = 195, BASE_W = 74, TIP_W = 20;
+  var KEY = 'mothlight-best';
+
+  var C = {
+    bgTop: '#0a0d1f', bgBot: '#1c1f4a',
+    rock: '#2c3163', rockHi: '#454c8c', rockLo: '#1d2147',
+    far: '#0f1334', mid: '#161a44',
+    glow: '#ffc857', wing: '#fff1c2', body: '#c98a2b', head: '#e3a948',
+    mist: '#7f8ad6', fg: '#eef0ff', dim: '#9aa2d6'
+  };
+  var DISPLAY = 'Unbounded, "Arial Black", sans-serif';
+  var BODY = '"DM Sans", system-ui, sans-serif';
+
+  var RM = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+  var cv = document.getElementById('c');
+  var ctx = cv.getContext('2d');
+  var stage = document.getElementById('stage');
+  var bestEl = document.getElementById('best');
+  var sndBtn = document.getElementById('snd');
+  var statusEl = document.getElementById('status');
+
+  function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+
+  /* ---------- state ---------- */
+  var state = 'ready'; // ready | play | over
+  var t = 0, world = 0, score = 0, shake = 0, deadAt = 0, newBest = false;
+  var best = parseInt(lsGet(KEY), 10) || 0;
+  var bird = { x: BX, y: 300, vy: 0, rot: 0, ph: 0, flapT: 0 };
+  var pipes = [];
+  var parts = [];
+  var motes = [];
+  var i;
+  for (i = 0; i < (RM ? 12 : 30); i++) {
+    motes.push({ x: Math.random() * W, y: Math.random() * FLOOR, r: 0.6 + Math.random() * 1.6, s: Math.random(), p: Math.random() * 6.28 });
+  }
+  bestEl.textContent = 'Best ' + best;
+
+  /* ---------- audio ---------- */
+  var ac = null;
+  var muted = lsGet('mothlight-muted') === '1';
+  function syncSnd() {
+    sndBtn.textContent = muted ? 'Sound off' : 'Sound on';
+    sndBtn.setAttribute('aria-pressed', muted ? 'false' : 'true');
+  }
+  syncSnd();
+  sndBtn.addEventListener('click', function () {
+    muted = !muted;
+    lsSet('mothlight-muted', muted ? '1' : '0');
+    syncSnd();
+    if (!muted) ensureAudio();
+  });
+  function ensureAudio() {
+    if (muted) return;
+    try {
+      if (!ac) {
+        var A = window.AudioContext || window.webkitAudioContext;
+        if (A) ac = new A();
+      }
+      if (ac && ac.state === 'suspended') ac.resume();
+    } catch (e) {}
+  }
+  function tone(f1, f2, dur, type, vol) {
+    if (muted || !ac) return;
+    try {
+      var o = ac.createOscillator(), g = ac.createGain(), n = ac.currentTime;
+      o.type = type;
+      o.frequency.setValueAtTime(f1, n);
+      o.frequency.exponentialRampToValueAtTime(f2, n + dur);
+      g.gain.setValueAtTime(vol, n);
+      g.gain.exponentialRampToValueAtTime(0.0001, n + dur);
+      o.connect(g);
+      g.connect(ac.destination);
+      o.start(n);
+      o.stop(n + dur + 0.02);
+    } catch (e) {}
+  }
+
+  /* ---------- sizing ---------- */
+  function fit() {
+    var r = stage.getBoundingClientRect();
+    var w = Math.max(160, Math.floor(Math.min(r.width, r.height * W / H)));
+    var h = Math.round(w * H / W);
+    var dpr = Math.min(window.devicePixelRatio || 1, 3);
+    cv.style.width = w + 'px';
+    cv.style.height = h + 'px';
+    cv.width = Math.round(w * dpr);
+    cv.height = Math.round(h * dpr);
+  }
+  if (window.ResizeObserver) new ResizeObserver(fit).observe(stage);
+  window.addEventListener('resize', fit);
+  fit();
+
+  /* ---------- game logic ---------- */
+  function rand(a, b) { return a + Math.random() * (b - a); }
+
+  function spawn(x) {
+    var prev = pipes.length ? pipes[pipes.length - 1].c : 300;
+    var c = rand(70 + GAP / 2, FLOOR - 50 - GAP / 2);
+    c = Math.max(prev - 150, Math.min(prev + 150, c));
+    pipes.push({ x: x, c: c, top: c - GAP / 2, bot: c + GAP / 2, passed: false });
+  }
+
+  function emit(x, y, n, spread, color) {
+    for (var k = 0; k < n; k++) {
+      parts.push({
+        x: x, y: y,
+        vx: rand(-spread, spread) - 30, vy: rand(-spread, spread),
+        l: 0, m: rand(0.35, 0.7), r: rand(1, 2.4), c: color || C.glow
+      });
+    }
+  }
+
+  function reset() {
+    state = 'ready';
+    bird.y = 300; bird.vy = 0; bird.rot = 0;
+    pipes = []; score = 0; newBest = false;
+    statusEl.textContent = '';
+  }
+
+  function startRun() {
+    state = 'play';
+    pipes = [];
+    spawn(W + 70);
+  }
+
+  function flap() {
+    bird.vy = FLAP;
+    bird.flapT = 0.22;
+    emit(bird.x - 8, bird.y + 4, RM ? 1 : 3, 40);
+    tone(420, 680, 0.09, 'triangle', 0.08);
+  }
+
+  function die() {
+    state = 'over';
+    deadAt = performance.now();
+    shake = RM ? 0 : 0.28;
+    emit(bird.x, bird.y, RM ? 6 : 20, 140, C.wing);
+    tone(240, 60, 0.35, 'sawtooth', 0.09);
+    if (score > best) {
+      best = score;
+      newBest = true;
+      lsSet(KEY, String(best));
+    }
+    bestEl.textContent = 'Best ' + best;
+    statusEl.textContent = 'Game over. Score ' + score + '. Best ' + best + '.';
+  }
+
+  // Circle against a tapered rock column. The column runs from its base
+  // (ceiling or floor) to its tip, and narrows from BASE_W to TIP_W.
+  function hitsRock(p, top) {
+    var base = top ? 0 : FLOOR;
+    var tip = top ? p.top : p.bot;
+    var len = Math.abs(tip - base);
+    var y0 = Math.min(base, tip), y1 = Math.max(base, tip);
+    var cy = Math.max(y0, Math.min(y1, bird.y));
+    var f = Math.abs(cy - base) / len;
+    var half = (BASE_W + (TIP_W - BASE_W) * f) / 2;
+    var dx = Math.max(0, Math.abs(bird.x - p.x) - half);
+    var dy = Math.abs(bird.y - cy);
+    return Math.sqrt(dx * dx + dy * dy) < BR;
+  }
+
+  function act() {
+    ensureAudio();
+    if (state === 'ready') {
+      startRun();
+      flap();
+    } else if (state === 'play') {
+      flap();
+    } else if (performance.now() - deadAt > 550) {
+      reset();
+    }
+  }
+
+  stage.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    act();
+  });
+  window.addEventListener('keydown', function (e) {
+    if (e.target && e.target.tagName === 'BUTTON') return;
+    if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW' || e.code === 'Enter') {
+      e.preventDefault();
+      if (!e.repeat) act();
+    }
+  });
+
+  function step(dt) {
+    var k, p;
+    t += dt;
+    if (state !== 'over') world += SPEED * dt * (state === 'play' ? 1 : 0.5);
+
+    for (k = 0; k < motes.length; k++) {
+      var m = motes[k];
+      m.x -= (8 + m.s * 12) * dt * (state === 'over' ? 0.3 : 1);
+      m.y += Math.sin(t * 0.8 + m.p) * 6 * dt;
+      if (m.x < -4) { m.x = W + 4; m.y = Math.random() * FLOOR; }
+    }
+    for (k = parts.length - 1; k >= 0; k--) {
+      p = parts[k];
+      p.l += dt;
+      if (p.l >= p.m) { parts.splice(k, 1); continue; }
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 160 * dt;
+    }
+    if (shake > 0) shake -= dt;
+    if (bird.flapT > 0) bird.flapT -= dt;
+    if (state !== 'over') bird.ph += dt * (bird.flapT > 0 ? 42 : (state === 'play' ? 16 : 18));
+
+    var target;
+    if (state === 'ready') {
+      bird.y = 300 + Math.sin(t * 3.2) * 9;
+      bird.vy = 0;
+      target = 0;
+    } else if (state === 'play') {
+      bird.vy = Math.min(MAXFALL, bird.vy + GRAV * dt);
+      bird.y += bird.vy * dt;
+      if (bird.y < BR) { bird.y = BR; if (bird.vy < 0) bird.vy = 0; }
+
+      for (k = 0; k < pipes.length; k++) {
+        p = pipes[k];
+        p.x -= SPEED * dt;
+        if (!p.passed && p.x < bird.x) {
+          p.passed = true;
+          score++;
+          tone(880, 1320, 0.12, 'sine', 0.07);
+        }
+      }
+      while (pipes.length && pipes[0].x < -BASE_W) pipes.shift();
+      var tail = pipes[pipes.length - 1];
+      if (!tail || tail.x <= W + 70 - SPACING) spawn(W + 70);
+
+      if (bird.y + BR >= FLOOR) {
+        bird.y = FLOOR - BR;
+        die();
+      } else {
+        for (k = 0; k < pipes.length; k++) {
+          p = pipes[k];
+          if (Math.abs(p.x - bird.x) < BASE_W / 2 + BR && (hitsRock(p, true) || hitsRock(p, false))) {
+            die();
+            break;
+          }
+        }
+      }
+      target = Math.max(-0.45, Math.min(1.1, bird.vy / 600));
+    } else {
+      bird.vy = Math.min(MAXFALL, bird.vy + GRAV * dt);
+      bird.y += bird.vy * dt;
+      if (bird.y > FLOOR - BR) { bird.y = FLOOR - BR; bird.vy = 0; }
+      target = 1.45;
+    }
+    bird.rot += (target - bird.rot) * Math.min(1, dt * 10);
+  }
+
+  /* ---------- drawing ---------- */
+  var bgGrad = null;
+  function drawBackground() {
+    if (!bgGrad) {
+      bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+      bgGrad.addColorStop(0, C.bgTop);
+      bgGrad.addColorStop(1, C.bgBot);
+    }
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    ridge(0.12, C.far, 40, 70, 0.018, 0.011, true);
+    ridge(0.12, C.far, 548, 80, 0.016, 0.009, false);
+    ridge(0.3, C.mid, 22, 56, 0.03, 0.017, true);
+    ridge(0.3, C.mid, 560, 60, 0.026, 0.014, false);
+
+    for (var k = 0; k < motes.length; k++) {
+      var m = motes[k];
+      ctx.globalAlpha = 0.25 + 0.5 * (0.5 + 0.5 * Math.sin(t * 1.5 + m.p));
+      ctx.fillStyle = C.mist;
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, m.r, 0, 6.2832);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Cave silhouettes. ceil=true hangs from the top, otherwise rises from the bottom.
+  function ridge(par, color, base, amp, f1, f2, ceil) {
+    var off = world * par, x, y;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(0, ceil ? 0 : H);
+    for (x = 0; x <= W + 8; x += 8) {
+      var s = 1 - Math.abs(Math.sin((x + off) * f1)) * 0.75 - Math.abs(Math.sin((x + off) * f2 + 1.3)) * 0.25;
+      y = ceil ? base + amp * s : base - amp * s;
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(W, ceil ? 0 : H);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function poly(pts, fill, alpha) {
+    ctx.beginPath();
+    ctx.moveTo(pts[0], pts[1]);
+    for (var k = 2; k < pts.length; k += 2) ctx.lineTo(pts[k], pts[k + 1]);
+    ctx.closePath();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  function drawRock(x, tip, top) {
+    var bh = BASE_W / 2, th = TIP_W / 2;
+    var by = top ? -4 : FLOOR;
+    poly([x - bh, by, x + bh, by, x + th, tip, x - th, tip], C.rock, 1);
+    poly([x - bh, by, x - bh * 0.15, by, x - th * 0.15, tip, x - th, tip], C.rockHi, 0.55);
+    poly([x + bh * 0.45, by, x + bh, by, x + th, tip, x + th * 0.45, tip], C.rockLo, 0.65);
+    var ty = top ? tip - 5 : tip + 5;
+    var pulse = 0.7 + 0.3 * Math.sin(t * 3 + x * 0.05);
+    ctx.globalAlpha = 0.28 * pulse;
+    ctx.fillStyle = C.glow;
+    ctx.beginPath();
+    ctx.arc(x, ty, 9, 0, 6.2832);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.beginPath();
+    ctx.arc(x, ty, 2.6, 0, 6.2832);
+    ctx.fill();
+  }
+
+  function drawFloor() {
+    ctx.fillStyle = '#0d102b';
+    ctx.fillRect(0, FLOOR, W, H - FLOOR);
+    var o = world % 28, x;
+    ctx.beginPath();
+    ctx.moveTo(-o - 28, FLOOR + 6);
+    for (x = -o - 28; x <= W + 28; x += 28) {
+      ctx.lineTo(x + 14, FLOOR - 6);
+      ctx.lineTo(x + 28, FLOOR + 6);
+    }
+    ctx.lineTo(W + 28, H);
+    ctx.lineTo(-28, H);
+    ctx.closePath();
+    ctx.fillStyle = C.rockLo;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(127,138,214,0.25)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  function drawMoth() {
+    var f = Math.sin(bird.ph);
+    var wingFlap = state === 'over' ? -0.6 : 0.15 + 0.85 * f;
+    ctx.save();
+    ctx.translate(bird.x, bird.y);
+    ctx.rotate(bird.rot);
+
+    var g = ctx.createRadialGradient(0, 0, 2, 0, 0, 48);
+    g.addColorStop(0, 'rgba(255,200,87,0.55)');
+    g.addColorStop(1, 'rgba(255,200,87,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, 0, 48, 0, 6.2832);
+    ctx.fill();
+
+    // far wing
+    ctx.save();
+    ctx.translate(-2, -1);
+    ctx.scale(1, state === 'over' ? -0.5 : 0.15 + 0.85 * Math.sin(bird.ph + 0.5));
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = C.wing;
+    ctx.beginPath();
+    ctx.ellipse(-3, -11, 7, 12, 0.25, 0, 6.2832);
+    ctx.fill();
+    ctx.restore();
+
+    // body
+    ctx.fillStyle = C.body;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 9, 5.5, 0, 0, 6.2832);
+    ctx.fill();
+    ctx.fillStyle = C.head;
+    ctx.beginPath();
+    ctx.arc(8, -1, 4, 0, 6.2832);
+    ctx.fill();
+    ctx.fillStyle = '#2a1a0c';
+    ctx.beginPath();
+    ctx.arc(10, -2, 1.1, 0, 6.2832);
+    ctx.fill();
+    ctx.strokeStyle = C.wing;
+    ctx.lineWidth = 1.2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(10, -4);
+    ctx.quadraticCurveTo(14, -10, 19, -9);
+    ctx.stroke();
+
+    // near wing
+    ctx.save();
+    ctx.translate(-2, -1);
+    ctx.scale(1, wingFlap);
+    ctx.globalAlpha = 0.92;
+    ctx.fillStyle = C.wing;
+    ctx.beginPath();
+    ctx.ellipse(-5, -12, 8.5, 13, 0.25, 0, 6.2832);
+    ctx.fill();
+    ctx.globalAlpha = 0.9;
+    ctx.strokeStyle = C.glow;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.restore();
+  }
+
+  function txt(s, x, y, font, color, align, alpha) {
+    ctx.font = font;
+    ctx.textAlign = align || 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.globalAlpha = alpha == null ? 1 : alpha;
+    ctx.fillStyle = color;
+    ctx.fillText(s, x, y);
+    ctx.globalAlpha = 1;
+  }
+
+  function rr(x, y, w, h, r) {
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, y, w, h, r);
+    else ctx.rect(x, y, w, h);
+  }
+
+  var vig = null;
+  function drawVignette() {
+    if (!vig) {
+      vig = ctx.createRadialGradient(W / 2, H / 2, 160, W / 2, H / 2, 440);
+      vig.addColorStop(0, 'rgba(4,5,16,0)');
+      vig.addColorStop(1, 'rgba(4,5,16,0.55)');
+    }
+    ctx.fillStyle = vig;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  function drawUI() {
+    var k;
+    if (state === 'play') {
+      txt(String(score), W / 2 + 2, 92, '800 52px ' + DISPLAY, 'rgba(0,0,0,0.45)');
+      txt(String(score), W / 2, 90, '800 52px ' + DISPLAY, C.wing);
+    } else if (state === 'ready') {
+      var a = 0.6 + 0.4 * Math.sin(t * 3);
+      txt('Tap to flutter', W / 2, 212, '800 22px ' + DISPLAY, C.fg, 'center', a);
+      txt('Slip through the gaps between the rocks', W / 2, 242, '500 14px ' + BODY, C.dim);
+      txt('Tap, click or press Space', W / 2, 262, '500 13px ' + BODY, C.dim, 'center', 0.8);
+    } else {
+      ctx.fillStyle = 'rgba(6,8,24,0.62)';
+      ctx.fillRect(0, 0, W, H);
+      var PX = 60, PY = 170, PW = 240, PH = 250;
+      rr(PX, PY, PW, PH, 18);
+      ctx.fillStyle = '#141737';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(127,138,214,0.4)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      txt('Game over', W / 2, PY + 44, '800 20px ' + DISPLAY, C.fg);
+      txt('SCORE', W / 2, PY + 80, '700 12px ' + BODY, C.dim);
+      txt(String(score), W / 2, PY + 140, '800 58px ' + DISPLAY, C.wing);
+      if (newBest) txt('New best!', W / 2, PY + 174, '700 15px ' + BODY, C.glow);
+      else txt('Best ' + best, W / 2, PY + 174, '500 15px ' + BODY, C.dim);
+      var ready = performance.now() - deadAt > 550;
+      var pa = ready ? 0.65 + 0.35 * Math.sin(t * 4) : 0.25;
+      txt('Tap to fly again', W / 2, PY + 220, '700 14px ' + BODY, C.fg, 'center', pa);
+    }
+  }
+
+  function draw() {
+    var k, p;
+    var s = cv.width / W;
+    ctx.setTransform(s, 0, 0, s, 0, 0);
+    ctx.save();
+    if (shake > 0) ctx.translate(rand(-4, 4) * (shake / 0.28), rand(-4, 4) * (shake / 0.28));
+
+    drawBackground();
+    for (k = 0; k < pipes.length; k++) {
+      p = pipes[k];
+      drawRock(p.x, p.top, true);
+      drawRock(p.x, p.bot, false);
+    }
+    drawFloor();
+
+    for (k = 0; k < parts.length; k++) {
+      p = parts[k];
+      ctx.globalAlpha = 1 - p.l / p.m;
+      ctx.fillStyle = p.c;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, 6.2832);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    drawMoth();
+    drawVignette();
+    drawUI();
+    ctx.restore();
+  }
+
+  /* ---------- loop ---------- */
+  var last = performance.now();
+  function frame(ts) {
+    var dt = Math.min(0.033, (ts - last) / 1000 || 0);
+    last = ts;
+    step(dt);
+    draw();
+    requestAnimationFrame(frame);
+  }
+  if (document.fonts && document.fonts.load) {
+    document.fonts.load('800 22px Unbounded');
+    document.fonts.load('500 14px "DM Sans"');
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+
+</body></html>
