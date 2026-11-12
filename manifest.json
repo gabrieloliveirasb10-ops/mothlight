@@ -9,9 +9,8 @@
   "icons": [
     {
       "src": "/mothlight/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml"
     }
   ]
 }
