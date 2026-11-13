@@ -1,0 +1,84 @@
+const CACHE_NAME = "o-asilo-v1";
+
+const APP_FILES = [
+  "./",
+  "./index.html",
+  "./manifest.webmanifest",
+  "./asilo-icon.svg"
+];
+
+const THREE_URL =
+  "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
+
+self.addEventListener("install", event => {
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+
+    await cache.addAll(APP_FILES);
+
+    try {
+      const response = await fetch(THREE_URL, {
+        mode: "no-cors"
+      });
+      await cache.put(THREE_URL, response);
+    } catch (error) {
+      console.log("Three.js será armazenado quando carregar.");
+    }
+
+    await self.skipWaiting();
+  })());
+});
+
+self.addEventListener("activate", event => {
+  event.waitUntil((async () => {
+    const names = await caches.keys();
+
+    await Promise.all(
+      names
+        .filter(name =>
+          name.startsWith("o-asilo-") &&
+          name !== CACHE_NAME
+        )
+        .map(name => caches.delete(name))
+    );
+
+    await self.clients.claim();
+  })());
+});
+
+self.addEventListener("fetch", event => {
+  const request = event.request;
+  const url = new URL(request.url);
+
+  if (request.method !== "GET") return;
+
+  if (url.href === THREE_URL) {
+    event.respondWith((async () => {
+      const cached = await caches.match(THREE_URL);
+      if (cached) return cached;
+
+      const response = await fetch(request);
+      const cache = await caches.open(CACHE_NAME);
+      await cache.put(THREE_URL, response.clone());
+
+      return response;
+    })());
+    return;
+  }
+
+  if (url.origin === self.location.origin) {
+    event.respondWith((async () => {
+      const cached = await caches.match(request);
+      if (cached) return cached;
+
+      const response = await fetch(request);
+
+      if (response.ok) {
+        const cache = await caches.open(CACHE_NAME);
+        await cache.put(request, response.clone());
+      }
+
+      return response;
+    })());
+  }
+});
