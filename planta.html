@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="planta-manifest.json">
+<meta name="theme-color" content="#2f7a2a">
+<link rel="apple-touch-icon" href="planta-icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Semente – Jogo da Planta</title>
+<style>
+:root{--hud:rgba(20,30,20,.65);--tx:#fff;--card:#f4f1e4;--cardtx:#2b3a24;--pan:rgba(30,24,16,.92);box-sizing:border-box}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--card:#2c3326;--cardtx:#e8f0dc;--pan:rgba(10,10,8,.94)}}
+:root[data-theme="dark"]{--card:#2c3326;--cardtx:#e8f0dc;--pan:rgba(10,10,8,.94)}
+html,body{margin:0;height:100%;overflow:hidden;background:#000;font-family:system-ui,sans-serif;color:var(--tx);user-select:none;-webkit-user-select:none;touch-action:manipulation}
+canvas{position:fixed;inset:0;width:100%;height:100%}
+.hud{position:fixed;background:var(--hud);padding:6px 10px;border-radius:12px;font-size:15px;font-weight:600;line-height:1.35;color:var(--tx)}
+#day{left:8px;top:calc(env(safe-area-inset-top,0px) + 8px);min-width:96px}
+#res{right:8px;top:calc(env(safe-area-inset-top,0px) + 8px);min-width:110px;text-align:right}
+.bar{height:5px;border-radius:3px;background:rgba(255,255,255,.25);margin-top:3px;overflow:hidden}
+.bar i{display:block;height:100%;width:0}
+#spd{left:8px;top:calc(env(safe-area-inset-top,0px) + 100px);font-size:12px;border:0;font-family:inherit}
+#toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 92px);transform:translateX(-50%);background:var(--hud);color:var(--tx);padding:8px 14px;border-radius:20px;font-size:14px;opacity:0;transition:opacity .4s;pointer-events:none;text-align:center}
+#grow{left:8px;bottom:calc(124px + env(safe-area-inset-bottom,0px));border:0;font-size:15px;background:#3f8f3a;font-family:inherit}
+#info{right:8px;bottom:calc(124px + env(safe-area-inset-bottom,0px));font-size:12px;white-space:pre;text-align:right}
+#sen{left:8px;bottom:calc(172px + env(safe-area-inset-bottom,0px));border:0;font-size:15px;background:#a8691f;font-family:inherit}
+#panel{position:fixed;left:0;right:0;bottom:0;box-sizing:border-box;height:calc(116px + env(safe-area-inset-bottom,0px));padding:8px 8px calc(8px + env(safe-area-inset-bottom,0px));background:var(--pan);display:flex;gap:8px;overflow-x:auto;overflow-y:hidden}
+.card{flex:0 0 104px;background:var(--card);color:var(--cardtx);border-radius:12px;text-align:center;padding:6px 4px;font-size:12px;cursor:pointer;display:flex;flex-direction:column;justify-content:center;gap:2px}
+.card b{font-size:13px}.card span.e{font-size:30px;line-height:1.1}
+.card.off{opacity:.45}.card.lock{opacity:.3;cursor:default}
+button.hud:disabled{opacity:.45}
+</style></head><body>
+<canvas id="c"></canvas>
+<div class="hud" id="day"><div id="dn">Dias: 0</div><div id="ph"></div><div id="pm" style="font-size:12px"></div><div class="bar"><i id="pb" style="background:#ffd54a"></i></div></div>
+<button class="hud" id="spd">⏩ Velocidade x1</button>
+<div class="hud" id="res"><div id="en"></div><div class="bar"><i id="eb" style="background:#ffd54a"></i></div><div id="wa" style="margin-top:4px"></div><div class="bar"><i id="wb" style="background:#4aa8ff"></i></div></div>
+<div id="toast"></div>
+<div class="hud" id="warn" style="display:none;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 140px);background:#b3261e;font-size:13px;white-space:nowrap"></div>
+<div id="over" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:10;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:20px;color:#fff"><div style="font-size:48px">💀</div><b style="font-size:22px">A planta morreu</b><div id="ocause" style="font-size:14px"></div><button id="rst" style="font-size:16px;padding:10px 22px;border:0;border-radius:12px;background:#3f8f3a;color:#fff;font-family:inherit">🌱 Reiniciar</button></div>
+<button class="hud" id="grow">⬆️ Crescer (+2 espaços)</button>
+<button class="hud" id="sen">🍂 Senescência</button>
+<div class="hud" id="info"></div>
+<div id="panel">
+ <div class="card" id="bLeaf"><span class="e">🍃</span><b>Folha</b><small>10 ⚡</small></div>
+ <div class="card" id="bPot"><span class="e">🥔</span><b>Batata</b><small>10 ⚡ · 10 💧</small></div>
+ <div class="card" id="bFlow"><span class="e">🌸</span><b>Flor</b><small id="sFlow"></small></div>
+ <div class="card" id="bRep"><span class="e">🌺</span><b>Flor reprodutiva</b><small id="sRep"></small></div>
+ <div class="card" id="bRoot"><span class="e">🌿</span><b>Raízes fortes</b><small id="sRoot"></small></div>
+ <div class="card" id="bBee"><span class="e">🐝</span><b>Atrair abelhas</b><small id="sBee"></small></div>
+</div>
+<script>
+const $=id=>document.getElementById(id),cv=$('c'),cx=cv.getContext('2d');
+const rnd=(a,b)=>a+Math.floor(Math.random()*(b-a+1)),cl=(v,a,b)=>Math.max(a,Math.min(b,v));
+const mix=(a,b,k)=>a.map((v,i)=>Math.round(v+(b[i]-v)*k)),rgb=c=>'rgb('+c+')',ease=g=>g*g*(3-2*g);
+let W,H;
+function rs(){const d=devicePixelRatio||1;W=innerWidth;H=innerHeight;cv.width=W*d;cv.height=H*d;cx.setTransform(d,0,0,d,0,0)}
+addEventListener('resize',rs);rs();
+const DAY=180,CYC=360,MAXLV=6,STARS=Array.from({length:50},()=>[Math.random(),Math.random()*.8]);
+const mk=()=>({t:0,days:0,en:60,wa:60,leaves:[],pots:[],flowers:[],bees:[],fruits:[],kids:[],bb:null,bbT:rnd(10,25),root:0,senT:0,level:0,tl:false,rainDay:rnd(10,30),rainT:null,speed:1,total:0,stemH:0,per:0,zero:0,dead:false,dust:0,cause:''});
+const S=mk();
+const maxEn=()=>60+10*S.level,maxWa=()=>60+5*S.level+10*S.root,cap=()=>2+2*S.level;
+const nParts=()=>S.leaves.filter(l=>!l.fall).length+S.flowers.length;
+function flPos(i){const o=[[0,-10],[-20,2],[20,2],[-32,16],[32,16],[0,14]][i%6];return[W/2+o[0],gyf()-S.stemH+o[1]]}
+function beeUpdate(raw,dt){
+  const day=S.t<DAY,ready=S.flowers.filter(f=>f.g>=1&&!f.r);
+  S.bees.forEach((b,i)=>{
+    if(!b.fl&&day&&ready.length&&(b.cool-=dt)<=0)b.fl=ready[rnd(0,ready.length-1)];
+    const home=[W-40-i*34,gyf()*.45+Math.sin(performance.now()/700+i)*10];
+    const tg=b.fl?flPos(b.fl.s):home,dx=tg[0]-b.x,dy=tg[1]-b.y,d=Math.hypot(dx,dy),sp=Math.min(d,140*raw);
+    if(d>1){b.x+=dx/d*sp;b.y+=dy/d*sp}
+    if(b.fl&&d<6){b.stay+=raw;if(b.stay>=2){S.en=Math.min(maxEn(),S.en+4);b.fl=null;b.stay=0;b.cool=rnd(45,70)}}
+  })}
+let tt;function toast(m){const e=$('toast');e.textContent=m;e.style.opacity=1;clearTimeout(tt);tt=setTimeout(()=>e.style.opacity=0,3000)}
+function blueUpdate(raw,dt){
+  const day=S.t<DAY,tg=S.flowers.filter(f=>f.r&&f.g>=1&&!f.pol),b=S.bb;
+  if(!b){if(day&&tg.length&&(S.bbT-=dt)<=0)S.bb={x:Math.random()<.5?-20:W+20,y:gyf()*.4,fl:tg[rnd(0,tg.length-1)],stay:0,out:false};return}
+  if(!day||!S.flowers.includes(b.fl)||b.fl.pol)b.out=true;
+  const t=b.out?[b.x<W/2?-60:W+60,gyf()*.3]:flPos(b.fl.s),dx=t[0]-b.x,dy=t[1]-b.y,d=Math.hypot(dx,dy),sp=Math.min(d,130*raw);
+  if(d>1){b.x+=dx/d*sp;b.y+=dy/d*sp}
+  if(b.out){if(b.x<-40||b.x>W+40){S.bb=null;S.bbT=rnd(25,60)}}
+  else if(d<6){b.stay+=raw;if(b.stay>=2){b.fl.pol=true;b.fl.pet=0;b.fl.fr=0;b.out=true;toast('🔵🐝 Flor polinizada! O fruto leva 10 dias')}}
+}
+function fruitUpdate(raw,dt){
+  const gy=gyf();
+  S.flowers.forEach(f=>{if(f.pol){f.pet+=raw;f.fr=Math.min(1,f.fr+dt/3600);if(f.fr>=1){const p=flPos(f.s),sd=Math.random()<.5?-1:1;
+    S.fruits.push({x:p[0],y:p[1],vy:0,rot:0,st:0,t:0,tx:cl(W/2+sd*rnd(90,150),20,W-20)});f.gone=true;toast('🍎 O fruto caiu!')}}});
+  S.flowers=S.flowers.filter(f=>!f.gone);
+  S.fruits.forEach(o=>{
+    if(o.st===0){o.vy+=500*raw;o.y+=o.vy*raw;if(o.y>=gy-9){o.y=gy-9;o.st=1}}
+    else if(o.st===1){const dx=o.tx-o.x,s=Math.min(Math.abs(dx),70*raw);o.x+=Math.sign(dx)*s;o.rot+=Math.sign(dx)*s/9;if(Math.abs(dx)<1)o.st=2}
+    else{o.t+=raw;if(o.t>3){o.done=true;S.kids.push({x:o.x,age:0});toast('🌱 Uma nova planta nasceu!')}}});
+  S.fruits=S.fruits.filter(o=>!o.done);
+  S.kids.forEach(k=>k.age+=dt);
+}
+function free(arr,c=cap()){const u=arr.map(a=>a.s);for(let i=0;i<c;i++)if(!u.includes(i))return i;return -1}
+function newDay(){
+  const pm=S.days%30;
+  if(pm===0){const r=Math.random();S.per=r<.35?1:r<.7?2:0;if(S.per===0&&S.rainDay<S.days)S.rainDay=S.days+rnd(1,10);
+    toast(['📅 Novo mês: período normal','☀️ Período de seca: não vai chover neste mês!','🌧️ Período chuvoso: chuva a cada 3 dias!'][S.per])}
+  if((S.per===2?pm%3===0:S.per===0&&S.days>=S.rainDay)&&S.rainT===null){S.rainT=0;toast('🌧️ Está chovendo!')}
+}
+function update(raw){
+  if(S.dead){S.dust+=raw;return}const dt=raw*S.speed;S.total+=dt;S.t+=dt;if(S.senT>0)S.senT-=raw;
+  if(S.t>=CYC){S.t-=CYC;S.days++;newDay()}
+  if(!S.tl&&S.days>=2){S.tl=true;S.leaves.push({s:0,g:0},{s:1,g:0});toast('🍃 Primeiras folhas verdadeiras!')}
+  S.leaves.forEach(l=>{l.g=Math.min(1,l.g+dt/60);if(l.fall)l.fall+=raw});S.leaves=S.leaves.filter(l=>!l.fall||l.fall<3);
+  S.flowers.forEach(f=>f.g=Math.min(1,f.g+dt/60));beeUpdate(raw,dt);blueUpdate(raw,dt);fruitUpdate(raw,dt);
+  if(S.rainT!==null){S.rainT+=dt;S.wa=Math.min(maxWa(),S.wa+maxWa()/45*dt);if(S.rainT>60){S.rainT=null;S.rainDay=S.days+rnd(10,30)}}
+  const np=nParts();S.wa=Math.max(0,S.wa-np*2*(1-.2*S.root)/CYC*dt);S.en=Math.max(0,S.en-np*2/CYC*dt);
+  if(S.t<DAY&&S.wa>0){const m=S.leaves.filter(l=>l.g>=1&&!l.fall).length;S.en=Math.min(maxEn(),S.en+m*5/DAY*dt)}
+  S.en=Math.min(S.en,maxEn());
+  if(S.wa<.5||S.en<.5){S.zero+=dt;if(S.zero>4*CYC){S.dead=true;S.cause=S.wa<.5?'água':'energia'}}else S.zero=0;
+  const target=S.tl?70+S.level*20:cl(S.total/25,0,1)*40;
+  S.stemH+=(target-S.stemH)*Math.min(1,raw*1.5);
+  S.pots.forEach(p=>{p.g=Math.min(1,p.g+raw/3);if(p.tap&&(p.tapT-=raw)<=0)p.tap=0});
+}
+function potPos(i,gy){const r=i>>1,s=i&1?1:-1;return[W/2+s*(30+r*22),gy+36+r*18,r,s]}
+const gyf=()=>(H-130)*.52;
+function draw(){
+  const gy=gyf(),bx=W/2,clk=performance.now()/1000,lw=5+S.level*1.3;
+  const k=cl((Math.sin(S.t/CYC*6.2832)+.2)/.6,0,1);
+  let g=cx.createLinearGradient(0,0,0,gy);
+  g.addColorStop(0,rgb(mix([8,10,35],[90,170,240],k)));g.addColorStop(1,rgb(mix([25,30,70],[190,228,250],k)));
+  cx.fillStyle=g;cx.fillRect(0,0,W,gy);
+  if(k<1){cx.fillStyle='#fff';cx.globalAlpha=1-k;STARS.forEach(s=>cx.fillRect(s[0]*W,s[1]*gy,1.6,1.6));cx.globalAlpha=1}
+  const day=S.t<DAY,p=(S.t%DAY)/DAY;
+  cx.beginPath();cx.arc(W*(.1+.8*p),gy*.92-Math.sin(Math.PI*p)*gy*.75,day?26:20,0,7);cx.fillStyle=day?'#ffe27a':'#eef1ff';cx.fill();
+  const rain=S.rainT!==null;
+  cx.fillStyle=(rain||S.per===2)?'rgba(90,100,120,.95)':'rgba(255,255,255,'+(.2+.6*k)+')';
+  for(let i=0;i<(rain||S.per===2?5:3);i++){const x=((i*170+clk*(rain?4:8))%(W+200))-100,y=gy*(.18+.1*(i%3));
+    [[0,0,26],[28,-8,32],[58,0,24]].forEach(c=>{cx.beginPath();cx.arc(x+c[0],y+c[1],c[2],0,7);cx.fill()})}
+  g=cx.createLinearGradient(0,gy,0,H);g.addColorStop(0,rain?'#4a331e':S.per===1?'#8c6a3c':'#6b4a2b');g.addColorStop(1,'#3b2716');
+  cx.fillStyle=g;cx.fillRect(0,gy,W,H-gy);cx.fillStyle='#4c9a3a';cx.fillRect(0,gy-4,W,8);
+  cx.lineCap='round';
+  // semente e raízes
+  const germ=cl(S.total/25,0,1);
+  cx.save();
+  if(S.dead){const y0=gy-S.stemH-50,y1=gy+190,yf=y0+(y1-y0)*cl(S.dust/4,0,1);cx.beginPath();cx.rect(bx-200,yf,400,H);cx.clip()}
+  cx.fillStyle='#8a6a3a';cx.beginPath();cx.ellipse(bx,gy+14,6,4,0,0,7);cx.fill();
+  const rl=cl(S.total/10,0,1)*(30+S.level*10+S.root*12);
+  cx.strokeStyle='#e0cfa6';cx.lineWidth=3+S.root;cx.beginPath();cx.moveTo(bx,gy+10);cx.quadraticCurveTo(bx+6,gy+10+rl*.5,bx-3,gy+10+rl);cx.stroke();
+  for(let r=0;r<S.root;r++){const sg=r%2?-1:1;cx.lineWidth=2;cx.beginPath();cx.moveTo(bx,gy+10+rl*.4);cx.quadraticCurveTo(bx+sg*(20+r*8),gy+10+rl*.5,bx+sg*(34+r*14),gy+10+rl*(.7+r*.08));cx.stroke()}
+  S.pots.forEach(o=>{const[px,py,r,s]=potPos(o.s,gy),e=ease(o.g);
+    cx.lineWidth=2;cx.strokeStyle='#e0cfa6';cx.beginPath();cx.moveTo(bx,gy+10+r*8);cx.quadraticCurveTo(bx+s*18,gy+14+r*10,px,py);cx.stroke();
+    cx.fillStyle='#b98a52';cx.strokeStyle=o.tap?'#ff5a4a':'#7a5528';cx.lineWidth=o.tap?3:1.5;
+    cx.beginPath();cx.ellipse(px,py,13*e,9*e,0,0,7);cx.fill();cx.stroke();
+    cx.fillStyle='#8f6a3a';[[-4,-2],[3,2],[5,-3]].forEach(d=>{cx.beginPath();cx.arc(px+d[0]*e,py+d[1]*e,1.3,0,7);cx.fill()})});
+  // caule
+  const sw=Math.sin(clk*1.3)*2,top=gy-S.stemH,sb=germ<1?gy+10:gy;
+  cx.strokeStyle='#4f9d3a';cx.lineWidth=lw;cx.beginPath();cx.moveTo(bx,sb);cx.quadraticCurveTo(bx,gy-S.stemH*.5,bx+sw,top);cx.stroke();
+  cx.fillStyle='#6cc04a';cx.beginPath();cx.arc(bx+sw,top,lw*.9,0,7);cx.fill();
+  const leaf=(x,y,L,sd,col)=>{cx.save();cx.translate(x,y);cx.rotate(sd>0?-.5:Math.PI+.5);
+    cx.fillStyle=col;cx.strokeStyle='#2f7a2a';cx.lineWidth=1.2;cx.beginPath();cx.ellipse(L/2,0,L/2,L/3.2,0,0,7);cx.fill();cx.stroke();
+    cx.beginPath();cx.moveTo(0,0);cx.lineTo(L,0);cx.stroke();cx.restore()};
+  if(!S.tl&&germ>.85){leaf(bx+sw,top,11,1,'#8fd36a');leaf(bx+sw,top,11,-1,'#8fd36a')}
+  S.leaves.forEach(l=>{const j=l.s>>1,sd=l.s&1?1:-1,f=.92-j*.75/(S.level+1),e=ease(l.g),fl=l.fall||0;
+    const col=l.fall?'#c9a13a':(S.wa<.5||S.en<.5)?'#b5b04a':rgb(mix([150,215,100],[70,170,60],e));
+    cx.globalAlpha=1-fl/3;leaf(bx+sw*f+sd*fl*14,Math.min(gy-2,gy-S.stemH*f+fl*fl*22),(24+S.level*3)*e,sd,col);cx.globalAlpha=1});
+  S.flowers.forEach(f=>{const[x,y]=flPos(f.s),e=ease(f.g),R=9*e;
+    if(f.pol){if(f.pet<3){cx.globalAlpha=1-f.pet/3;cx.fillStyle='#a855f7';for(let a=0;a<6;a++){cx.beginPath();cx.ellipse(x+Math.cos(a*1.047)*(8+f.pet*6),y+f.pet*20+Math.sin(a*1.047)*4,4,2.5,a,0,7);cx.fill()}cx.globalAlpha=1}
+      cx.fillStyle=rgb(mix([120,190,70],[220,50,60],f.fr));cx.beginPath();cx.arc(x,y+3,2+7*f.fr,0,7);cx.fill();return}
+    cx.fillStyle=f.g<1?'#9fd18a':f.r?'#a855f7':'#ff7fb0';for(let a=0;a<6;a++){cx.beginPath();cx.arc(x+Math.cos(a*1.047)*R*.8,y+Math.sin(a*1.047)*R*.8,R*.55,0,7);cx.fill()}
+    cx.fillStyle='#ffd23f';cx.beginPath();cx.arc(x,y,R*.5,0,7);cx.fill()});
+  cx.restore();
+  if(S.dead){const y0=gy-S.stemH-50,y1=gy+190,h=(i,k)=>{const v=Math.sin(i*12.9898+k*78.233)*43758.5453;return v-Math.floor(v)};
+    for(let i=0;i<160;i++){const t0=i/160,a=S.dust-t0*4;if(a<0)continue;const py=y0+(y1-y0)*t0,ug=py>gy,px=bx+(h(i,1)-.5)*(ug?140:90);
+      const x=ug?px+(h(i,2)-.5)*a*20:px+a*(30+h(i,2)*50),y=ug?py-a*6:Math.min(gy-2,py-a*h(i,3)*20+a*a*14);
+      cx.globalAlpha=Math.max(0,1-a/3.5);cx.fillStyle=h(i,4)<.5?'#c8b48a':'#8f8068';cx.fillRect(x,y,2+h(i,5)*3,2+h(i,5)*3)}
+    cx.globalAlpha=1}
+  S.kids.forEach(k=>{const g=Math.min(1,k.age/1080),h=8+36*g;cx.strokeStyle='#4f9d3a';cx.lineWidth=2+g*2;cx.beginPath();cx.moveTo(k.x,gy);cx.lineTo(k.x,gy-h);cx.stroke();
+    for(let i=0;i<1+Math.floor(g*3);i++)leaf(k.x,gy-h*(.9-i*.2),5+9*g,i%2?1:-1,'#58b545')});
+  S.fruits.forEach(o=>{cx.save();cx.translate(o.x,o.y);cx.rotate(o.rot);cx.fillStyle='#dc3246';cx.beginPath();cx.arc(0,0,9,0,7);cx.fill();cx.fillStyle='rgba(255,255,255,.55)';cx.fillRect(-3,-6,3,3);cx.restore()});
+  if(S.bb){const b=S.bb;cx.fillStyle='rgba(255,255,255,.8)';cx.beginPath();cx.ellipse(b.x-2,b.y-6,4,3,0,0,7);cx.fill();cx.fillStyle='#3b82f6';cx.beginPath();cx.ellipse(b.x,b.y,7,5,0,0,7);cx.fill();cx.fillStyle='#1e3a8a';cx.fillRect(b.x-2,b.y-5,2,10)}
+  if(S.t<DAY)S.bees.forEach(b=>{cx.fillStyle='rgba(255,255,255,.8)';cx.beginPath();cx.ellipse(b.x-2,b.y-6,4,3,0,0,7);cx.fill();cx.fillStyle='#ffcc2a';cx.beginPath();cx.ellipse(b.x,b.y,7,5,0,0,7);cx.fill();cx.fillStyle='#222';cx.fillRect(b.x-2,b.y-5,2,10)});
+  if(rain){cx.strokeStyle='#9cc9ff';cx.lineWidth=1.5;cx.beginPath();
+    for(let i=0;i<80;i++){const x=(i*97)%W,y=(clk*500+i*53)%gy;cx.moveTo(x,y);cx.lineTo(x-3,y+12)}cx.stroke()}
+  cx.fillStyle='rgba(5,10,40,'+(1-k)*.35+')';cx.fillRect(0,0,W,H);
+}
+function ui(){
+  const ph=S.t<DAY,rem=Math.ceil(DAY-(S.t%DAY)),np=nParts();
+  $('dn').textContent='Dias: '+S.days;
+  $('pm').textContent='📅 Mês '+(Math.floor(S.days/30)+1)+' ('+(S.days%30+1)+'/30): '+['Normal','☀️ Seca','🌧️ Chuvoso'][S.per];
+  const zr=S.wa<.5||S.en<.5;$('warn').style.display=zr&&!S.dead?'block':'none';
+  if(zr)$('warn').textContent='⚠️ Sem '+(S.wa<.5?'água':'energia')+'! Morte em '+Math.max(0,(4*CYC-S.zero)/CYC).toFixed(1)+' dias';
+  $('over').style.display=S.dead&&S.dust>4.5?'flex':'none';
+  if(S.dead)$('ocause').textContent='Sobreviveu '+S.days+' dias. Causa: falta de '+S.cause+' por mais de 4 dias.';
+  $('ph').textContent=(ph?'☀️ Dia ':'🌙 Noite ')+Math.floor(rem/60)+':'+String(rem%60).padStart(2,'0');
+  $('pb').style.width=(S.t%DAY)/DAY*100+'%';
+  $('en').textContent='⚡ '+Math.floor(S.en)+'/'+maxEn();$('eb').style.width=S.en/maxEn()*100+'%';
+  $('wa').textContent='💧 '+Math.floor(S.wa)+'/'+maxWa();$('wb').style.width=S.wa/maxWa()*100+'%';
+  $('wb').style.background=S.wa<=0?'#ff5a4a':'#4aa8ff';
+  $('info').textContent='🍃 '+S.leaves.filter(l=>!l.fall).length+'/'+cap()+' · 🥔 '+S.pots.length+'/'+cap()+' · 🌸 '+S.flowers.length+'/'+S.level+'\n🐝 '+S.bees.length+'/3 · 🌿 '+S.root+'/3 · 🌱 '+S.kids.length+'\nGasto/dia: 💧 '+(np*2*(1-.2*S.root)).toFixed(1)+' · ⚡ '+np*2+(S.tl?'':'\nAguarde a germinação (2 dias)');
+  $('bLeaf').classList.toggle('off',!S.tl||S.en<10||S.leaves.length>=cap());
+  $('bPot').classList.toggle('off',!S.tl||S.en<10||S.wa<10||S.pots.length>=cap());
+  $('grow').disabled=!S.tl||S.level>=MAXLV;
+  $('bFlow').classList.toggle('off',!S.tl||S.en<20||S.wa<10||S.flowers.length>=S.level);
+  $('bRep').classList.toggle('off',!S.tl||S.en<30||S.wa<15||S.flowers.length>=S.level);
+  $('sRep').textContent='30 ⚡ · 15 💧 (🌺 '+S.flowers.filter(f=>f.r).length+')';
+  $('bRoot').classList.toggle('off',!S.tl||S.root>=3||S.en<30*(S.root+1)||S.wa<20);
+  $('bBee').classList.toggle('off',!S.tl||S.bees.length>=3||S.en<15*(S.bees.length+1));
+  $('sFlow').textContent='20 ⚡ · 10 💧 ('+S.flowers.length+'/'+S.level+')';
+  $('sRoot').textContent=S.root>=3?'Nível máximo':(30*(S.root+1))+' ⚡ · 20 💧 · Nv '+S.root+'/3';
+  $('sBee').textContent=S.bees.length>=3?'Máximo':(15*(S.bees.length+1))+' ⚡ · '+S.bees.length+'/3';
+  $('sen').disabled=!S.leaves.some(l=>!l.fall);$('sen').textContent=S.senT>0?'❓ Confirmar?':'🍂 Senescência';
+  $('grow').textContent=S.level>=MAXLV?'🌳 Tamanho máximo':'⬆️ Crescer (+2 espaços)';
+}
+$('bLeaf').onclick=()=>{if(!S.tl)return toast('Espere as primeiras folhas verdadeiras');
+  const s=free(S.leaves);if(s<0)return toast('Sem espaço: cresça a planta!');if(S.en<10)return toast('Energia insuficiente');
+  S.en-=10;S.leaves.push({s,g:0})};
+$('bPot').onclick=()=>{if(!S.tl)return toast('Espere as primeiras folhas verdadeiras');
+  const s=free(S.pots);if(s<0)return toast('Sem espaço: cresça a planta!');if(S.en<10||S.wa<10)return toast('Faltam energia ou água');
+  S.en-=10;S.wa-=10;S.pots.push({s,g:0,tap:0,tapT:0})};
+$('grow').onclick=()=>{if(S.tl&&S.level<MAXLV){S.level++;toast('🌱 A planta cresceu! +2 espaços, +10 ⚡ e +5 💧 de limite')}};
+$('bFlow').onclick=()=>{if(!S.tl)return toast('Espere as primeiras folhas verdadeiras');
+  const s=free(S.flowers,S.level);if(s<0)return toast('Cresça a planta para liberar espaço para flores!');if(S.en<20||S.wa<10)return toast('Faltam energia ou água');
+  S.en-=20;S.wa-=10;S.flowers.push({s,g:0});toast('🌸 A flor vai desabrochar em 1 minuto')};
+$('bRoot').onclick=()=>{if(!S.tl)return toast('Espere as primeiras folhas verdadeiras');
+  if(S.root>=3)return toast('Raízes já no nível máximo');const c=30*(S.root+1);if(S.en<c||S.wa<20)return toast('Faltam energia ou água');
+  S.en-=c;S.wa-=20;S.root++;toast('🌿 Raízes fortes: menos água gasta e mais reserva')};
+$('bBee').onclick=()=>{if(!S.tl)return toast('Espere as primeiras folhas verdadeiras');
+  if(S.bees.length>=3)return toast('Máximo de abelhas atingido');const c=15*(S.bees.length+1);if(S.en<c)return toast('Energia insuficiente');
+  if(!S.flowers.length)toast('As abelhas precisam de flores abertas para polinizar');
+  S.en-=c;S.bees.push({x:W-40,y:gyf()*.45,fl:null,stay:0,cool:rnd(5,20)})};
+$('sen').onclick=()=>{if(!S.leaves.some(l=>!l.fall))return;
+  if(S.senT>0){S.leaves.forEach(l=>{if(!l.fall)l.fall=.001});S.senT=0;toast('🍂 As folhas estão caindo: menos gasto de água e energia')}else{S.senT=3;toast('Toque de novo para confirmar a senescência')}};
+$('bRep').onclick=()=>{if(!S.tl)return toast('Espere as primeiras folhas verdadeiras');
+  const s=free(S.flowers,S.level);if(s<0)return toast('Cresça a planta para liberar espaço para flores!');if(S.en<30||S.wa<15)return toast('Faltam energia ou água');
+  S.en-=30;S.wa-=15;S.flowers.push({s,g:0,r:true,pol:false,pet:0,fr:0});toast('🌺 Quando abrir, uma abelha azul pode polinizá-la')};
+$('rst').onclick=()=>{Object.keys(S).forEach(k=>delete S[k]);Object.assign(S,mk());$('spd').textContent='⏩ Velocidade x1'};
+$('spd').onclick=()=>{const V=[1,5,20,60,200];S.speed=V[(V.indexOf(S.speed)+1)%V.length];$('spd').textContent='⏩ Velocidade x'+S.speed};
+cv.addEventListener('pointerdown',e=>{const gy=gyf();
+  for(const o of S.pots){const[px,py]=potPos(o.s,gy),dx=(e.clientX-px)/16,dy=(e.clientY-py)/13;
+    if(dx*dx+dy*dy<=1.6){o.tap++;o.tapT=2;
+      if(o.tap>=2){S.pots.splice(S.pots.indexOf(o),1);S.en=Math.min(maxEn(),S.en+10);S.wa=Math.min(maxWa(),S.wa+10);toast('🥔 Batata removida: +10 ⚡ +10 💧')}
+      break}}});
+const KEY='planta-save-v1';
+function save(){try{if(S.dead){localStorage.removeItem(KEY);return}
+  localStorage.setItem(KEY,JSON.stringify(Object.assign({},S,{bb:null,bees:S.bees.map(b=>Object.assign({},b,{fl:null,stay:0}))})))}catch(e){}}
+function load(){try{const r=localStorage.getItem(KEY);if(!r)return;const o=JSON.parse(r);if(!o||o.dead)return;o.speed=1;o.senT=0;
+  Object.keys(S).forEach(k=>delete S[k]);Object.assign(S,mk(),o);toast('💾 Jogo carregado')}catch(e){}}
+load();setInterval(save,5000);
+addEventListener('pagehide',save);document.addEventListener('visibilitychange',()=>{if(document.hidden)save()});
+let last=performance.now();
+(function loop(n){const d=Math.min(.1,(n-last)/1000);last=n;update(d);draw();ui();requestAnimationFrame(loop)})(last);
+if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('planta-sw.js',{scope:'planta.html'}).catch(()=>{}));
+</script></body></html>
