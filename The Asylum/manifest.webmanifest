@@ -2,9 +2,9 @@
   "id": "./",
   "name": "O Asilo",
   "short_name": "O Asilo",
-  "description": "Jogo de terror em primeira pessoa",
+  "description": "Jogo de terror",
   "lang": "pt-BR",
-  "start_url": "./index.html",
+  "start_url": "./app.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "landscape",
@@ -14,8 +14,7 @@
     {
       "src": "./asilo-icon.svg",
       "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
+      "type": "image/svg+xml"
     }
   ]
 }
