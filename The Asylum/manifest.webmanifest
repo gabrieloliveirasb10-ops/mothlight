@@ -1,0 +1,21 @@
+{
+  "id": "./",
+  "name": "O Asilo",
+  "short_name": "O Asilo",
+  "description": "Jogo de terror em primeira pessoa",
+  "lang": "pt-BR",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#030303",
+  "theme_color": "#030303",
+  "icons": [
+    {
+      "src": "./asilo-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
