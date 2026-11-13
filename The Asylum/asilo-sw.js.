@@ -2,7 +2,8 @@ const CACHE_NAME = "o-asilo-v1";
 
 const APP_FILES = [
   "./",
-  "./index.html",
+ "./app.html",
+"./index.html",
   "./manifest.webmanifest",
   "./asilo-icon.svg"
 ];
