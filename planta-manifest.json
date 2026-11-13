@@ -3,7 +3,6 @@
  "name": "Semente – Jogo da Planta",
  "short_name": "Planta",
  "start_url": "planta.html",
- "scope": "planta.html",
  "display": "standalone",
  "orientation": "portrait",
  "background_color": "#0b1d0f",
@@ -14,13 +13,19 @@
    "src": "planta-icon-192.png",
    "sizes": "192x192",
    "type": "image/png",
-   "purpose": "any maskable"
+   "purpose": "any"
   },
   {
    "src": "planta-icon-512.png",
    "sizes": "512x512",
    "type": "image/png",
-   "purpose": "any maskable"
+   "purpose": "any"
+  },
+  {
+   "src": "planta-icon-512.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "maskable"
   }
  ]
 }
